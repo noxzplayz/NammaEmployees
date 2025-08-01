@@ -4,6 +4,8 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { io, Socket } from "socket.io-client"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -81,29 +83,65 @@ export default function AdminPanel({ onLogout }: AdminPanelProps) {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
 
-  // Load data from localStorage on mount
-  useEffect(() => {
-    const storedEmployees = localStorage.getItem("employees")
-    const storedAttendance = localStorage.getItem("attendanceRecords")
+  const [socket, setSocket] = useState<Socket | null>(null)
 
-    if (storedEmployees) {
-      setEmployees(JSON.parse(storedEmployees))
-    }
-    if (storedAttendance) {
-      setAttendanceRecords(JSON.parse(storedAttendance))
+  // Initialize socket connection and in-memory data on mount
+  useEffect(() => {
+    // Initialize socket connection
+    const newSocket = io("http://localhost:4000")
+    setSocket(newSocket)
+
+    // Initialize in-memory data
+    let inMemoryEmployees: Employee[] = []
+    let inMemoryAttendanceRecords: AttendanceRecord[] = []
+
+    // Listen for client requests to get data
+    newSocket.on("request-data", (role) => {
+      if (role === "client") {
+        newSocket.emit("update-action", { type: "employees", payload: inMemoryEmployees })
+        newSocket.emit("update-action", { type: "attendanceRecords", payload: inMemoryAttendanceRecords })
+      }
+    })
+
+    // Listen for admin actions to update data
+    newSocket.on("admin-action", (data) => {
+      if (data.type === "employees") {
+        inMemoryEmployees = data.payload
+        setEmployees(inMemoryEmployees)
+        // Broadcast to clients - removed from client side
+        // Server handles broadcasting
+      } else if (data.type === "attendanceRecords") {
+        inMemoryAttendanceRecords = data.payload
+        setAttendanceRecords(inMemoryAttendanceRecords)
+        // Broadcast to clients - removed from client side
+        // Server handles broadcasting
+      }
+    })
+
+    return () => {
+      newSocket.disconnect()
     }
   }, [])
 
-  // Save employees to localStorage whenever employees change
+  // Emit admin actions on employees change
   useEffect(() => {
-    localStorage.setItem("employees", JSON.stringify(employees))
-  }, [employees])
+    if (socket) {
+      socket.emit("admin-action", { type: "employees", payload: employees })
+    }
+  }, [employees, socket])
 
   const handleAddEmployee = (employeeData: Partial<Employee>) => {
     setPendingEmployeeData(employeeData)
     setShowFaceCapture(true)
     setIsAddEmployeeOpen(false)
   }
+  
+  // Emit admin actions on attendanceRecords change
+  useEffect(() => {
+    if (socket) {
+      socket.emit("admin-action", { type: "attendanceRecords", payload: attendanceRecords })
+    }
+  }, [attendanceRecords, socket])
 
   const handleFaceCaptured = (faceData: string) => {
     if (pendingEmployeeData) {

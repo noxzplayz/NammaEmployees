@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
+import { io, Socket } from "socket.io-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -43,6 +44,8 @@ export default function FaceScanPage() {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString())
   const [employees, setEmployees] = useState<Employee[]>([])
 
+  const [socket, setSocket] = useState<Socket | null>(null)
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -52,6 +55,22 @@ export default function FaceScanPage() {
     const storedEmployees = localStorage.getItem("employees")
     if (storedEmployees) {
       setEmployees(JSON.parse(storedEmployees))
+    }
+
+    // Initialize socket connection
+    const newSocket = io("http://localhost:4000")
+    setSocket(newSocket)
+
+    // Listen for update-action events from server
+    newSocket.on("update-action", (data) => {
+      if (data.type === "employees") {
+        setEmployees(data.payload)
+      }
+      // Could add attendanceRecords update here if needed
+    })
+
+    return () => {
+      newSocket.disconnect()
     }
   }, [])
 
